@@ -78,52 +78,89 @@ if "position" not in st.session_state:
 if "trades" not in st.session_state:
     st.session_state.trades = []
 
-if st.button("AUTOMATIC PAPER BUY", type="primary"):
-    if st.session_state.position is not None:
-        st.warning("Existing position must be closed first.")
-    elif signal == "NO TRADE":
-        st.warning("No valid trading signal.")
-    else:
-        entry = ce_price if signal == "CALL BUY" else pe_price
-        st.session_state.position = {
-            "type": "CE" if signal == "CALL BUY" else "PE",
-            "entry": entry,
-            "quantity": lots * lot_size,
-            "sl": entry * (1 - sl_pct / 100),
-            "target": entry * (1 + target_pct / 100)
-        }
-        st.success("Paper BUY order created!")
 
+# Automatic Paper Trading
+if "position" not in st.session_state:
+    st.session_state.position = None
+
+if "trades" not in st.session_state:
+    st.session_state.trades = []
+
+if "last_entry_signal" not in st.session_state:
+    st.session_state.last_entry_signal = None
+
+# Reset entry lock when signal disappears
+if signal == "NO TRADE":
+    st.session_state.last_entry_signal = None
+
+# Automatic BUY
+elif (
+    st.session_state.position is None
+    and signal != st.session_state.last_entry_signal
+):
+    entry = ce_price if signal == "CALL BUY" else pe_price
+
+    st.session_state.position = {
+        "type": "CE" if signal == "CALL BUY" else "PE",
+        "entry": entry,
+        "quantity": lots * lot_size,
+        "sl": entry * (1 - sl_pct / 100),
+        "target": entry * (1 + target_pct / 100)
+    }
+
+    st.session_state.last_entry_signal = signal
+    st.success("Automatic Paper BUY created!")
+
+# Position monitoring
 pos = st.session_state.position
 
-if pos:
-    st.subheader("Open Paper Position")
-    st.write("Option:", pos["type"])
-    st.write("Entry:", pos["entry"])
-    st.write("Quantity:", pos["quantity"])
-    st.write("Stop Loss:", round(pos["sl"], 2))
-    st.write("Target:", round(pos["target"], 2))
-
+if pos is not None:
     current = ce_price if pos["type"] == "CE" else pe_price
     pnl = (current - pos["entry"]) * pos["quantity"]
 
+    st.subheader("Open Paper Position")
+    st.write("Option:", pos["type"])
+    st.write("Entry:", pos["entry"])
+    st.write("Current Premium:", current)
+    st.write("Quantity:", pos["quantity"])
+    st.write("Stop Loss:", round(pos["sl"], 2))
+    st.write("Target:", round(pos["target"], 2))
     st.metric("Paper P&L", f"₹{pnl:.2f}")
 
-    if current <= pos["sl"] or current >= pos["target"]:
-        st.warning("SL / Target reached. Exit required.")
+    # Automatic SELL
+    exit_reason = None
 
-    if st.button("PAPER SELL / EXIT"):
+    if current <= pos["sl"]:
+        exit_reason = "Stop Loss"
+    elif current >= pos["target"]:
+        exit_reason = "Target"
+
+    if exit_reason:
         st.session_state.trades.append({
             "Option": pos["type"],
             "Entry": pos["entry"],
             "Exit": current,
             "Quantity": pos["quantity"],
-            "P&L": pnl
+            "P&L": pnl,
+            "Reason": exit_reason
         })
-        st.session_state.position = None
-        st.success("Paper position closed.")
-        st.rerun()
 
+        st.session_state.position = None
+        st.success(f"Automatic SELL: {exit_reason} reached!")
+
+    elif st.button("PAPER SELL / EXIT"):
+        st.session_state.trades.append({
+            "Option": pos["type"],
+            "Entry": pos["entry"],
+            "Exit": current,
+            "Quantity": pos["quantity"],
+            "P&L": pnl,
+            "Reason": "Manual Exit"
+        })
+
+        st.session_state.position = None
+        st.success("Paper position closed!")
+    
 st.subheader("Trade History")
 if st.session_state.trades:
     st.dataframe(st.session_state.trades)
