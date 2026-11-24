@@ -1,4 +1,6 @@
 
+from streamlit_autorefresh import st_autorefresh
+
 import streamlit as st
 
 st.set_page_config(
@@ -6,6 +8,8 @@ st.set_page_config(
     page_icon="📈",
     layout="wide"
 )
+
+st_autorefresh(interval=5000, key="nifty_refresh")
 
 st.title("📈 NIFTY 50 AI Options Trading")
 st.caption("CALL BUY + PUT BUY | Paper Trading Only")
